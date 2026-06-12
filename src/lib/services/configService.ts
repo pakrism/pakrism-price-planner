@@ -27,7 +27,7 @@ export function subscribeToConfig(
       callback({ ...seedConfig, ...snap.data() } as AppConfig);
     },
     (error) => {
-      console.error('Config subscription error:', error);
+      console.warn('Config subscription error (using local defaults):', error);
       onError?.();
       callback(seedConfig);
     },

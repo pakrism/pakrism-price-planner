@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { AppConfig } from '../lib/pricing/types';
 import { seedConfig } from '../data/seedConfig';
-import { saveConfig, subscribeToConfig } from '../lib/services/configService';
+import { saveConfig, seedConfigIfMissing, subscribeToConfig } from '../lib/services/configService';
 import { useAuth } from './AuthProvider';
 
 interface ConfigContextValue {
@@ -19,7 +19,7 @@ const ConfigContext = createContext<ConfigContextValue>({
 });
 
 export function ConfigProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, isAdminUser } = useAuth();
   const [config, setConfig] = useState<AppConfig>(seedConfig);
   const [loading, setLoading] = useState(true);
   const [usingLocalDefaults, setUsingLocalDefaults] = useState(false);
@@ -38,6 +38,11 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
         setConfig(next);
         setUsingLocalDefaults(false);
         setLoading(false);
+        if (isAdminUser) {
+          seedConfigIfMissing().catch((error) => {
+            console.warn('Could not seed price planner config:', error);
+          });
+        }
       },
       () => {
         setConfig(seedConfig);

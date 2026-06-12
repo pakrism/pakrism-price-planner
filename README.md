@@ -25,10 +25,14 @@ Uses the same Firebase project as `pr-bookings-manager`. Sign in with your exist
 - `npm run build` — production build
 - `npm test` — pricing engine unit tests
 
-## Deploy Firestore rules
+## Deploy Firestore rules (required for shared admin config)
+
+See [FIRESTORE_SETUP.md](FIRESTORE_SETUP.md). Deploy from **pr-bookings-manager**, not this repo:
 
 ```bash
-firebase deploy --only firestore:rules
+cd ~/pr-bookings-manager
+npx firebase-tools login
+npm run deploy:rules
 ```
 
 Config is stored at `pricePlanner/config`.
