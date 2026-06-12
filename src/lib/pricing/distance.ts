@@ -28,27 +28,97 @@ export function getRoundTripCityIds(departureCityId: string, waypointIds: string
   return { outbound, returnTrip: returnIds };
 }
 
+function resolveCityId(key: string, cities: City[]): string {
+  if (cities.some((city) => city.id === key)) return key;
+  const byName = cities.find((city) => city.name === key);
+  return byName?.id ?? key;
+}
+
+function buildDistanceGraph(matrix: DistanceLeg[], cities: City[]): Map<string, Map<string, number>> {
+  const graph = new Map<string, Map<string, number>>();
+
+  function addEdge(from: string, to: string, km: number) {
+    if (!graph.has(from)) graph.set(from, new Map());
+    const edges = graph.get(from)!;
+    const existing = edges.get(to);
+    if (existing == null || km < existing) {
+      edges.set(to, km);
+    }
+  }
+
+  matrix.forEach((leg) => {
+    const from = resolveCityId(leg.from, cities);
+    const to = resolveCityId(leg.to, cities);
+    addEdge(from, to, leg.km);
+    addEdge(to, from, leg.km);
+  });
+
+  return graph;
+}
+
+function shortestPathKm(
+  fromId: string,
+  toId: string,
+  graph: Map<string, Map<string, number>>,
+): number | null {
+  if (fromId === toId) return 0;
+
+  const distances = new Map<string, number>([[fromId, 0]]);
+  const visited = new Set<string>();
+  const queue = [fromId];
+
+  while (queue.length > 0) {
+    queue.sort((a, b) => (distances.get(a) ?? Infinity) - (distances.get(b) ?? Infinity));
+    const current = queue.shift()!;
+    if (visited.has(current)) continue;
+    visited.add(current);
+
+    if (current === toId) return distances.get(toId) ?? null;
+
+    const edges = graph.get(current);
+    if (!edges) continue;
+
+    edges.forEach((km, next) => {
+      const nextDistance = (distances.get(current) ?? Infinity) + km;
+      if (nextDistance < (distances.get(next) ?? Infinity)) {
+        distances.set(next, nextDistance);
+        if (!visited.has(next)) queue.push(next);
+      }
+    });
+  }
+
+  return distances.has(toId) ? distances.get(toId)! : null;
+}
+
 function lookupLegKm(
   fromId: string,
   toId: string,
   matrix: DistanceLeg[],
   cities: City[],
 ): number | null {
-  const direct = matrix.find((leg) => leg.from === fromId && leg.to === toId);
+  const from = resolveCityId(fromId, cities);
+  const to = resolveCityId(toId, cities);
+
+  const direct = matrix.find(
+    (leg) =>
+      (leg.from === from && leg.to === to) ||
+      (leg.from === to && leg.to === from) ||
+      (leg.from === fromId && leg.to === toId) ||
+      (leg.from === toId && leg.to === fromId),
+  );
   if (direct) return direct.km;
 
-  const reverse = matrix.find((leg) => leg.from === toId && leg.to === fromId);
-  if (reverse) return reverse.km;
-
-  const fromCity = cities.find((c) => c.id === fromId)?.name ?? fromId;
-  const toCity = cities.find((c) => c.id === toId)?.name ?? toId;
-  const byNameDirect = matrix.find((leg) => leg.from === fromCity && leg.to === toCity);
+  const fromCity = cities.find((c) => c.id === from)?.name ?? from;
+  const toCity = cities.find((c) => c.id === to)?.name ?? to;
+  const byNameDirect = matrix.find(
+    (leg) =>
+      (leg.from === fromCity && leg.to === toCity) ||
+      (leg.from === toCity && leg.to === fromCity),
+  );
   if (byNameDirect) return byNameDirect.km;
 
-  const byNameReverse = matrix.find((leg) => leg.from === toCity && leg.to === fromCity);
-  if (byNameReverse) return byNameReverse.km;
-
-  return null;
+  const graph = buildDistanceGraph(matrix, cities);
+  return shortestPathKm(from, to, graph);
 }
 
 export function calculateManualDistance(

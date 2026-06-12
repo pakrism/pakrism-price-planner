@@ -34,4 +34,31 @@ describe('distance', () => {
     );
     expect(result.missingLegs?.length).toBeGreaterThan(0);
   });
+
+  it('resolves multi-hop routes through the distance matrix', () => {
+    const result = calculateManualDistance(
+      'islamabad',
+      ['naran'],
+      75,
+      seedConfig.distanceLegs,
+      seedConfig.cities,
+    );
+    expect(result.missingLegs).toBeUndefined();
+    expect(result.outboundKm).toBe(230);
+    expect(result.returnKm).toBe(230);
+    expect(result.totalKm).toBe(535);
+  });
+
+  it('resolves longer routes such as Islamabad to Hunza via northern legs', () => {
+    const result = calculateManualDistance(
+      'islamabad',
+      ['hunza'],
+      75,
+      seedConfig.distanceLegs,
+      seedConfig.cities,
+    );
+    expect(result.missingLegs).toBeUndefined();
+    expect(result.outboundKm).toBe(590);
+    expect(result.returnKm).toBe(590);
+  });
 });

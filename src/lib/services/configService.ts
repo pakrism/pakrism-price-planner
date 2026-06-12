@@ -8,20 +8,30 @@ const CONFIG_REF = doc(db, 'pricePlanner', 'config');
 export async function loadConfig(): Promise<AppConfig> {
   const snap = await getDoc(CONFIG_REF);
   if (!snap.exists()) {
-    await setDoc(CONFIG_REF, seedConfig);
     return seedConfig;
   }
   return { ...seedConfig, ...snap.data() } as AppConfig;
 }
 
-export function subscribeToConfig(callback: (config: AppConfig) => void): () => void {
-  return onSnapshot(CONFIG_REF, (snap) => {
-    if (!snap.exists()) {
+export function subscribeToConfig(
+  callback: (config: AppConfig) => void,
+  onError?: () => void,
+): () => void {
+  return onSnapshot(
+    CONFIG_REF,
+    (snap) => {
+      if (!snap.exists()) {
+        callback(seedConfig);
+        return;
+      }
+      callback({ ...seedConfig, ...snap.data() } as AppConfig);
+    },
+    (error) => {
+      console.error('Config subscription error:', error);
+      onError?.();
       callback(seedConfig);
-      return;
-    }
-    callback({ ...seedConfig, ...snap.data() } as AppConfig);
-  });
+    },
+  );
 }
 
 export async function saveConfig(config: AppConfig): Promise<void> {

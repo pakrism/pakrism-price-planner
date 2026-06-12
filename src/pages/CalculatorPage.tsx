@@ -24,7 +24,7 @@ import type { PriceBreakdown, TicketSelection } from '../lib/pricing/types';
 import { resolveTripDistance } from '../lib/services/distanceService';
 
 export default function CalculatorPage() {
-  const { config } = useConfig();
+  const { config, usingLocalDefaults } = useConfig();
   const [departureCityId, setDepartureCityId] = useState('islamabad');
   const [waypointIds, setWaypointIds] = useState<string[]>([]);
   const [vehicleId, setVehicleId] = useState(config.vehicles[0]?.id ?? '');
@@ -111,6 +111,13 @@ export default function CalculatorPage() {
           Estimate package costs by road. Results are not saved.
         </Typography>
       </Box>
+
+      {usingLocalDefaults && (
+        <Alert severity="warning">
+          Using built-in defaults — Firestore config is unavailable. Deploy Firestore rules from
+          pr-bookings-manager, then refresh. Admin saves will not persist until then.
+        </Alert>
+      )}
 
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, lg: 7 }}>
