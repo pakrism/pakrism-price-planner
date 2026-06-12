@@ -1,22 +1,2 @@
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isAdmin() {
-      return isSignedIn() &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
-
-    match /pricePlanner/{doc} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    match /users/{userId} {
-      allow read: if isSignedIn() && request.auth.uid == userId;
-    }
-  }
-}
+// Deploy rules from pr-bookings-manager/firestore.rules (includes pricePlanner block).
+// Do not deploy this file alone — it would remove bookings/packages rules.

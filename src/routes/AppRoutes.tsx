@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
+import AuthLoadingScreen from '../components/ui/AuthLoadingScreen';
 import { useAuth } from '../context/AuthProvider';
 import MainLayout from '../layouts/MainLayout';
 import CalculatorPage from '../pages/CalculatorPage';
@@ -14,22 +15,20 @@ import VehiclesPage from '../pages/admin/VehiclesPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
-  if (loading) return null;
+  if (loading) return <AuthLoadingScreen />;
   if (!user) return <Navigate to="/login" replace />;
   return children;
 }
 
 function RequireAdmin({ children }: { children: React.ReactNode }) {
   const { isAdminUser, loading } = useAuth();
-  if (loading) return null;
+  if (loading) return <AuthLoadingScreen />;
   if (!isAdminUser) return <Navigate to="/" replace />;
   return children;
 }
 
 export default function AppRoutes() {
-  const { user, loading } = useAuth();
-
-  if (loading) return null;
+  const { user } = useAuth();
 
   return (
     <Routes>

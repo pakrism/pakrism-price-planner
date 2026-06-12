@@ -10,24 +10,48 @@ export interface UserProfile {
 }
 
 export function watchAuth(callback: (user: User | null) => void): () => void {
-  return onAuthStateChanged(auth, callback);
+  return onAuthStateChanged(
+    auth,
+    callback,
+    (error) => {
+      console.error('Auth state error:', error);
+      callback(null);
+    },
+  );
 }
 
-export function subscribeToUserProfile(uid: string, callback: (profile: UserProfile | null) => void) {
+export function subscribeToUserProfile(
+  uid: string,
+  callback: (profile: UserProfile | null) => void,
+  onError?: (error: Error) => void,
+) {
   const ref = doc(db, 'users', uid);
-  return onSnapshot(ref, (snap) => {
-    if (!snap.exists()) {
+  return onSnapshot(
+    ref,
+    (snap) => {
+      if (!snap.exists()) {
+        callback(null);
+        return;
+      }
+      const data = snap.data();
+      callback({
+        uid,
+        email: data.email,
+        fullName: data.fullName,
+        role:
+          data.role === 'admin'
+            ? 'admin'
+            : data.role === 'booking_manager'
+              ? 'booking_manager'
+              : 'viewer',
+      });
+    },
+    (error) => {
+      console.error('User profile subscription error:', error);
+      onError?.(error);
       callback(null);
-      return;
-    }
-    const data = snap.data();
-    callback({
-      uid,
-      email: data.email,
-      fullName: data.fullName,
-      role: data.role === 'admin' ? 'admin' : data.role === 'booking_manager' ? 'booking_manager' : 'viewer',
-    });
-  });
+    },
+  );
 }
 
 export async function loginWithEmail(email: string, password: string) {
