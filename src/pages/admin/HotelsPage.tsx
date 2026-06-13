@@ -1,74 +1,83 @@
 import { useState } from 'react';
 import Button from '@mui/material/Button';
+import FormControl from '@mui/material/FormControl';
 import IconButton from '@mui/material/IconButton';
+import InputLabel from '@mui/material/InputLabel';
+import MenuItem from '@mui/material/MenuItem';
+import Select from '@mui/material/Select';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
-import Typography from '@mui/material/Typography';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ConfigSection from '../../components/admin/ConfigSection';
 import { useConfig } from '../../context/ConfigProvider';
-import type { HotelCategory } from '../../lib/pricing/types';
+import type { HotelCategory, HotelProperty } from '../../lib/pricing/types';
 
 function newCategory(): HotelCategory {
-  return { id: `hotel-${Date.now()}`, name: '', defaultPricePerNight: 12000, destinationOverrides: {} };
+  return { id: `cat-${Date.now()}`, name: '', defaultPricePerNight: 12000, destinationOverrides: {} };
+}
+
+function newHotel(): HotelProperty {
+  return { id: `hotel-${Date.now()}`, name: '', cityId: '', categoryId: 'deluxe', pricePerRoomPerNight: 12000 };
 }
 
 export default function HotelsPage() {
   const { config, updateConfig } = useConfig();
-  const [items, setItems] = useState(config.hotelCategories);
+  const [categories, setCategories] = useState(config.hotelCategories);
+  const [hotels, setHotels] = useState(config.hotels ?? []);
   const [saving, setSaving] = useState(false);
-
-  function updateItem(index: number, patch: Partial<HotelCategory>) {
-    setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
-  }
-
-  function updateOverride(catIndex: number, dest: string, value: number) {
-    setItems((prev) =>
-      prev.map((item, i) =>
-        i === catIndex
-          ? { ...item, destinationOverrides: { ...item.destinationOverrides, [dest]: value } }
-          : item,
-      ),
-    );
-  }
 
   async function handleSave() {
     setSaving(true);
-    await updateConfig({ ...config, hotelCategories: items });
+    await updateConfig({ ...config, hotelCategories: categories, hotels });
     setSaving(false);
   }
 
   return (
-    <ConfigSection title="Hotel Categories" description="Deluxe, Executive, and per-destination overrides.">
-      <Stack spacing={3}>
-        {items.map((item, index) => (
-          <Stack key={item.id} spacing={1} sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-            <Stack direction="row" spacing={1}>
-              <TextField label="Category" value={item.name} onChange={(e) => updateItem(index, { name: e.target.value })} fullWidth />
-              <TextField label="Default/night" type="number" value={item.defaultPricePerNight} onChange={(e) => updateItem(index, { defaultPricePerNight: Number(e.target.value) })} />
-              <IconButton color="error" onClick={() => setItems(items.filter((_, i) => i !== index))}>
-                <DeleteIcon />
-              </IconButton>
+    <Stack spacing={3}>
+      <ConfigSection title="Hotel Categories" description="Deluxe, Executive, etc. Used as fallback when no named hotel is selected.">
+        <Stack spacing={2}>
+          {categories.map((item, index) => (
+            <Stack key={item.id} direction="row" spacing={1}>
+              <TextField label="Category" value={item.name} onChange={(e) => setCategories(categories.map((c, i) => i === index ? { ...c, name: e.target.value } : c))} fullWidth />
+              <TextField label="Default PKR/room/night" type="number" value={item.defaultPricePerNight} onChange={(e) => setCategories(categories.map((c, i) => i === index ? { ...c, defaultPricePerNight: Number(e.target.value) } : c))} />
+              <IconButton color="error" onClick={() => setCategories(categories.filter((_, i) => i !== index))}><DeleteIcon /></IconButton>
             </Stack>
-            <Typography variant="caption" color="text.secondary">Destination overrides (PKR/night)</Typography>
-            {config.cities.map((city) => (
-              <TextField
-                key={city.id}
-                size="small"
-                label={city.name}
-                type="number"
-                value={item.destinationOverrides[city.name] ?? ''}
-                placeholder={String(item.defaultPricePerNight)}
-                onChange={(e) => updateOverride(index, city.name, Number(e.target.value))}
-              />
-            ))}
-          </Stack>
-        ))}
-        <Stack direction="row" spacing={1}>
-          <Button variant="outlined" onClick={() => setItems([...items, newCategory()])}>Add category</Button>
-          <Button variant="contained" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
+          ))}
+          <Button variant="outlined" onClick={() => setCategories([...categories, newCategory()])}>Add category</Button>
         </Stack>
-      </Stack>
-    </ConfigSection>
+      </ConfigSection>
+
+      <ConfigSection title="Named Hotels" description="Hotels by location with per-room pricing.">
+        <Stack spacing={2}>
+          {hotels.map((item, index) => (
+            <Stack key={item.id} direction={{ xs: 'column', md: 'row' }} spacing={1}>
+              <TextField label="Hotel name" value={item.name} onChange={(e) => setHotels(hotels.map((h, i) => i === index ? { ...h, name: e.target.value } : h))} fullWidth />
+              <FormControl fullWidth>
+                <InputLabel>City</InputLabel>
+                <Select label="City" value={item.cityId} onChange={(e) => setHotels(hotels.map((h, i) => i === index ? { ...h, cityId: e.target.value } : h))}>
+                  {config.cities.map((city) => (
+                    <MenuItem key={city.id} value={city.id}>{city.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl fullWidth>
+                <InputLabel>Category</InputLabel>
+                <Select label="Category" value={item.categoryId} onChange={(e) => setHotels(hotels.map((h, i) => i === index ? { ...h, categoryId: e.target.value } : h))}>
+                  {categories.map((cat) => (
+                    <MenuItem key={cat.id} value={cat.id}>{cat.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField label="PKR/room/night" type="number" value={item.pricePerRoomPerNight} onChange={(e) => setHotels(hotels.map((h, i) => i === index ? { ...h, pricePerRoomPerNight: Number(e.target.value) } : h))} />
+              <IconButton color="error" onClick={() => setHotels(hotels.filter((_, i) => i !== index))}><DeleteIcon /></IconButton>
+            </Stack>
+          ))}
+          <Stack direction="row" spacing={1}>
+            <Button variant="outlined" onClick={() => setHotels([...hotels, newHotel()])}>Add hotel</Button>
+            <Button variant="contained" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save all'}</Button>
+          </Stack>
+        </Stack>
+      </ConfigSection>
+    </Stack>
   );
 }

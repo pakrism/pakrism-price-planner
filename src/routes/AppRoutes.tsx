@@ -9,7 +9,9 @@ import CitiesPage from '../pages/admin/CitiesPage';
 import DistanceMatrixPage from '../pages/admin/DistanceMatrixPage';
 import FuelPage from '../pages/admin/FuelPage';
 import HotelsPage from '../pages/admin/HotelsPage';
+import JeepSegmentsPage from '../pages/admin/JeepSegmentsPage';
 import ProvisionsPage from '../pages/admin/ProvisionsPage';
+import QuoteTemplatePage from '../pages/admin/QuoteTemplatePage';
 import TicketsPage from '../pages/admin/TicketsPage';
 import VehiclesPage from '../pages/admin/VehiclesPage';
 
@@ -52,11 +54,13 @@ export default function AppRoutes() {
           <Route index element={<Navigate to="/admin/vehicles" replace />} />
           <Route path="vehicles" element={<VehiclesPage />} />
           <Route path="cities" element={<CitiesPage />} />
+          <Route path="jeeps" element={<JeepSegmentsPage />} />
           <Route path="distances" element={<DistanceMatrixPage />} />
           <Route path="hotels" element={<HotelsPage />} />
           <Route path="tickets" element={<TicketsPage />} />
           <Route path="provisions" element={<ProvisionsPage />} />
           <Route path="fuel" element={<FuelPage />} />
+          <Route path="quote" element={<QuoteTemplatePage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -76,7 +76,12 @@ export default function ItineraryBuilder({ cities, waypointIds, onChange }: Prop
                 }}
               >
                 <Chip size="small" label={index + 1} />
-                <Typography sx={{ flex: 1 }}>{city?.name ?? id}</Typography>
+                <Typography sx={{ flex: 1 }}>
+                  {city?.name ?? id}
+                  {city?.vehicleAccess.length === 1 && city.vehicleAccess[0] === 'jeep' && (
+                    <Chip size="small" label="jeep only" color="warning" sx={{ ml: 1 }} />
+                  )}
+                </Typography>
                 <IconButton size="small" onClick={() => moveStop(index, -1)} disabled={index === 0}>
                   <ArrowUpwardIcon fontSize="small" />
                 </IconButton>

@@ -9,12 +9,6 @@ From `pr-bookings-manager`:
 ```bash
 cd ~/pr-bookings-manager
 npx firebase-tools login
-./scripts/deploy-firestore-rules.sh
-```
-
-Or:
-
-```bash
 npm run deploy:rules
 ```
 
@@ -42,8 +36,30 @@ After rules are live, log in as **admin** on https://pr-plan.netlify.app → **A
 
 The app auto-seeds `pricePlanner/config` on first successful admin load if the document is missing.
 
+## OpenAI key for AI requirement parsing
+
+The **Parse with AI** button calls the `parseClientRequirement` Cloud Function in `pr-bookings-manager`.
+
+1. Create an API key at [OpenAI API keys](https://platform.openai.com/api-keys)
+2. Store it as a Firebase Functions secret:
+
+```bash
+cd ~/pr-bookings-manager
+npx firebase-tools login
+npx firebase-tools functions:secrets:set OPENAI_API_KEY --project pakrism-bookings
+```
+
+3. Deploy the function:
+
+```bash
+firebase deploy --only functions:parseClientRequirement --project pakrism-bookings
+```
+
+If the secret is missing or the function is not deployed, the calculator falls back to local keyword parsing and shows a warning.
+
 ## Verify
 
 1. Hard refresh https://pr-plan.netlify.app
 2. Log in — console should not show config permission errors
 3. Yellow “Using built-in defaults” banner should be gone
+4. Paste a client message → **Parse with AI** should populate calculator fields (when signed in and function is deployed)

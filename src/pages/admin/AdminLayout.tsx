@@ -7,11 +7,13 @@ import Typography from '@mui/material/Typography';
 const tabs = [
   { to: '/admin/vehicles', label: 'Vehicles' },
   { to: '/admin/cities', label: 'Cities' },
+  { to: '/admin/jeeps', label: 'Jeeps' },
   { to: '/admin/distances', label: 'Distances' },
   { to: '/admin/hotels', label: 'Hotels' },
   { to: '/admin/tickets', label: 'Tickets' },
   { to: '/admin/provisions', label: 'Provisions' },
   { to: '/admin/fuel', label: 'Fuel' },
+  { to: '/admin/quote', label: 'Quote' },
 ];
 
 export default function AdminLayout() {
