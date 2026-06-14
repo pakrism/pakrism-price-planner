@@ -34,30 +34,94 @@ import type {
   TicketSelection,
 } from '../lib/pricing/types';
 import { buildQuoteFromCalculation } from '../lib/quote/generateCustomerQuote';
+import type { ParseResult } from '../lib/services/aiParser';
 import { resolveTripDistance } from '../lib/services/distanceService';
+
+interface CalculatorFormState {
+  packageTitle: string;
+  departureCityId: string;
+  waypointIds: string[];
+  vehicleId: string;
+  tripDays: number;
+  hotelNights: HotelNightInput[];
+  jeepSegments: JeepSegmentSelection[];
+  selectedTickets: Record<string, boolean>;
+  ticketQty: Record<string, number>;
+  adults: number;
+  children: number;
+  quoteMode: QuoteMode;
+  marginPercent: number;
+}
+
+function buildFormState(parsed: ParsedRequirement, current: CalculatorFormState): CalculatorFormState {
+  const next = { ...current };
+
+  if (parsed.packageTitle) next.packageTitle = parsed.packageTitle;
+  if (parsed.departureCityId) next.departureCityId = parsed.departureCityId;
+  if (parsed.waypointIds) next.waypointIds = parsed.waypointIds;
+  if (parsed.vehicleId) next.vehicleId = parsed.vehicleId;
+  if (parsed.tripDays) next.tripDays = parsed.tripDays;
+  if (parsed.adults != null) next.adults = parsed.adults;
+  if (parsed.children != null) next.children = parsed.children;
+  if (parsed.hotelNights) next.hotelNights = parsed.hotelNights;
+  if (parsed.jeepSegments) next.jeepSegments = parsed.jeepSegments;
+  if (parsed.marginPercent != null) next.marginPercent = parsed.marginPercent;
+  if (parsed.quoteMode) next.quoteMode = parsed.quoteMode;
+
+  if (parsed.tickets) {
+    const selectedTickets: Record<string, boolean> = {};
+    const ticketQty: Record<string, number> = {};
+    parsed.tickets.forEach((t) => {
+      selectedTickets[t.ticketId] = true;
+      ticketQty[t.ticketId] = t.quantity;
+    });
+    next.selectedTickets = selectedTickets;
+    next.ticketQty = ticketQty;
+  }
+
+  return next;
+}
 
 export default function CalculatorPage() {
   const { config, usingLocalDefaults } = useConfig();
-  const [packageTitle, setPackageTitle] = useState('Skardu & Hunza Tour - Deluxe Plan');
-  const [departureCityId, setDepartureCityId] = useState('islamabad');
-  const [waypointIds, setWaypointIds] = useState<string[]>([]);
-  const [vehicleId, setVehicleId] = useState(config.vehicles[0]?.id ?? '');
-  const [tripDays, setTripDays] = useState(8);
-  const [hotelNights, setHotelNights] = useState<HotelNightInput[]>([
-    { destinationId: 'skardu', categoryId: 'deluxe', hotelId: 'maple-skardu', rooms: 1, nights: 3 },
-    { destinationId: 'hunza', categoryId: 'deluxe', hotelId: 'hunza-elite', rooms: 1, nights: 3 },
-  ]);
-  const [jeepSegments, setJeepSegments] = useState<JeepSegmentSelection[]>([]);
-  const [selectedTickets, setSelectedTickets] = useState<Record<string, boolean>>({});
-  const [ticketQty, setTicketQty] = useState<Record<string, number>>({});
-  const [adults, setAdults] = useState(5);
-  const [children, setChildren] = useState(0);
-  const [quoteMode, setQuoteMode] = useState<QuoteMode>('family');
-  const [marginPercent, setMarginPercent] = useState(config.provisions.defaultMarginPercent);
+  const [form, setForm] = useState<CalculatorFormState>({
+    packageTitle: 'Skardu & Hunza Tour - Deluxe Plan',
+    departureCityId: 'islamabad',
+    waypointIds: [],
+    vehicleId: config.vehicles[0]?.id ?? '',
+    tripDays: 8,
+    hotelNights: [
+      { destinationId: 'skardu', categoryId: 'deluxe', hotelId: 'maple-skardu', rooms: 1, nights: 3 },
+      { destinationId: 'hunza', categoryId: 'deluxe', hotelId: 'hunza-elite', rooms: 1, nights: 3 },
+    ],
+    jeepSegments: [],
+    selectedTickets: {},
+    ticketQty: {},
+    adults: 5,
+    children: 0,
+    quoteMode: 'family',
+    marginPercent: config.provisions.defaultMarginPercent,
+  });
   const [breakdown, setBreakdown] = useState<PriceBreakdown | null>(null);
   const [customerQuote, setCustomerQuote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [calculating, setCalculating] = useState(false);
+
+  const {
+    packageTitle,
+    departureCityId,
+    waypointIds,
+    vehicleId,
+    tripDays,
+    hotelNights,
+    jeepSegments,
+    selectedTickets,
+    ticketQty,
+    adults,
+    children,
+    quoteMode,
+    marginPercent,
+  } = form;
 
   const pax = adults + children;
   const selectedVehicle = config.vehicles.find((v) => v.id === vehicleId);
@@ -67,46 +131,23 @@ export default function CalculatorPage() {
     [config, selectedVehicle],
   );
 
-  const tickets: TicketSelection[] = useMemo(
-    () =>
-      Object.entries(selectedTickets)
-        .filter(([, checked]) => checked)
-        .map(([ticketId]) => ({ ticketId, quantity: ticketQty[ticketId] ?? pax })),
-    [selectedTickets, ticketQty, pax],
-  );
-
-  function applyParsed(parsed: ParsedRequirement) {
-    if (parsed.packageTitle) setPackageTitle(parsed.packageTitle);
-    if (parsed.departureCityId) setDepartureCityId(parsed.departureCityId);
-    if (parsed.waypointIds) setWaypointIds(parsed.waypointIds);
-    if (parsed.vehicleId) setVehicleId(parsed.vehicleId);
-    if (parsed.tripDays) setTripDays(parsed.tripDays);
-    if (parsed.adults != null) setAdults(parsed.adults);
-    if (parsed.children != null) setChildren(parsed.children);
-    if (parsed.hotelNights) setHotelNights(parsed.hotelNights);
-    if (parsed.jeepSegments) setJeepSegments(parsed.jeepSegments);
-    if (parsed.marginPercent != null) setMarginPercent(parsed.marginPercent);
-    if (parsed.quoteMode) setQuoteMode(parsed.quoteMode);
-    if (parsed.tickets) {
-      const next: Record<string, boolean> = {};
-      const qty: Record<string, number> = {};
-      parsed.tickets.forEach((t) => {
-        next[t.ticketId] = true;
-        qty[t.ticketId] = t.quantity;
-      });
-      setSelectedTickets(next);
-      setTicketQty(qty);
-    }
+  function updateForm<K extends keyof CalculatorFormState>(key: K, value: CalculatorFormState[K]) {
+    setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  async function handleCalculate() {
+  async function runCalculation(state: CalculatorFormState) {
     setCalculating(true);
     setError(null);
     setCustomerQuote(null);
     try {
+      const statePax = state.adults + state.children;
+      const stateTickets: TicketSelection[] = Object.entries(state.selectedTickets)
+        .filter(([, checked]) => checked)
+        .map(([ticketId]) => ({ ticketId, quantity: state.ticketQty[ticketId] ?? statePax }));
+
       const distance = await resolveTripDistance(
-        departureCityId,
-        waypointIds,
+        state.departureCityId,
+        state.waypointIds,
         config.provisions.defaultBufferKm,
         config,
       );
@@ -115,17 +156,17 @@ export default function CalculatorPage() {
       }
 
       const input: CalculationInput = {
-        departureCityId,
-        waypointIds,
-        vehicleId,
-        tripDays,
-        hotelNights: hotelNights.filter((h) => h.destinationId),
-        jeepSegments,
-        tickets,
-        pax,
-        marginPercent,
-        packageTitle,
-        quoteMode,
+        departureCityId: state.departureCityId,
+        waypointIds: state.waypointIds,
+        vehicleId: state.vehicleId,
+        tripDays: state.tripDays,
+        hotelNights: state.hotelNights.filter((h) => h.destinationId),
+        jeepSegments: state.jeepSegments,
+        tickets: stateTickets,
+        pax: statePax,
+        marginPercent: state.marginPercent,
+        packageTitle: state.packageTitle,
+        quoteMode: state.quoteMode,
         bufferKm: config.provisions.defaultBufferKm,
       };
 
@@ -137,6 +178,18 @@ export default function CalculatorPage() {
       setError(err instanceof Error ? err.message : 'Calculation failed');
     } finally {
       setCalculating(false);
+    }
+  }
+
+  async function handleCalculate() {
+    await runCalculation(form);
+  }
+
+  async function handleAiParsed(parsed: ParseResult) {
+    const next = buildFormState(parsed.result, form);
+    setForm(next);
+    if (parsed.source === 'ai') {
+      await runCalculation(next);
     }
   }
 
@@ -154,18 +207,18 @@ export default function CalculatorPage() {
       )}
 
       <Paper sx={{ p: 3 }}>
-        <AiRequirementPanel config={config} onParsed={applyParsed} />
+        <AiRequirementPanel config={config} onParsed={handleAiParsed} />
       </Paper>
 
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, lg: 7 }}>
           <Paper sx={{ p: 3 }}>
             <Stack spacing={3}>
-              <TextField label="Package title" value={packageTitle} onChange={(e) => setPackageTitle(e.target.value)} fullWidth />
+              <TextField label="Package title" value={packageTitle} onChange={(e) => updateForm('packageTitle', e.target.value)} fullWidth />
 
               <FormControl fullWidth>
                 <InputLabel>Departure city</InputLabel>
-                <Select label="Departure city" value={departureCityId} onChange={(e) => setDepartureCityId(e.target.value)}>
+                <Select label="Departure city" value={departureCityId} onChange={(e) => updateForm('departureCityId', e.target.value)}>
                   {getDepartureCities(config).map((city) => (
                     <MenuItem key={city.id} value={city.id}>{city.name}</MenuItem>
                   ))}
@@ -174,14 +227,14 @@ export default function CalculatorPage() {
 
               <Box>
                 <Typography variant="subtitle1" gutterBottom>Itinerary stops</Typography>
-                <ItineraryBuilder cities={stopCities.filter((c) => c.id !== departureCityId)} waypointIds={waypointIds} onChange={setWaypointIds} />
+                <ItineraryBuilder cities={stopCities.filter((c) => c.id !== departureCityId)} waypointIds={waypointIds} onChange={(ids) => updateForm('waypointIds', ids)} />
               </Box>
 
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12, sm: 6 }}>
                   <FormControl fullWidth>
                     <InputLabel>Vehicle</InputLabel>
-                    <Select label="Vehicle" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
+                    <Select label="Vehicle" value={vehicleId} onChange={(e) => updateForm('vehicleId', e.target.value)}>
                       {config.vehicles.map((v) => (
                         <MenuItem key={v.id} value={v.id}>{v.name} ({v.avgKmPerLiter} km/L)</MenuItem>
                       ))}
@@ -189,18 +242,18 @@ export default function CalculatorPage() {
                   </FormControl>
                 </Grid>
                 <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField fullWidth label="Trip days" type="number" slotProps={{ htmlInput: { min: 1 } }} value={tripDays} onChange={(e) => setTripDays(Number(e.target.value) || 1)} />
+                  <TextField fullWidth label="Trip days" type="number" slotProps={{ htmlInput: { min: 1 } }} value={tripDays} onChange={(e) => updateForm('tripDays', Number(e.target.value) || 1)} />
                 </Grid>
               </Grid>
 
               <Box>
                 <Typography variant="subtitle1" gutterBottom>Hotel stays</Typography>
-                <HotelNightsForm config={config} value={hotelNights} onChange={setHotelNights} />
+                <HotelNightsForm config={config} value={hotelNights} onChange={(value) => updateForm('hotelNights', value)} />
               </Box>
 
               <Box>
                 <Typography variant="subtitle1" gutterBottom>Jeep add-ons</Typography>
-                <JeepSegmentsForm config={config} waypointIds={waypointIds} pax={pax} value={jeepSegments} onChange={setJeepSegments} />
+                <JeepSegmentsForm config={config} waypointIds={waypointIds} pax={pax} value={jeepSegments} onChange={(value) => updateForm('jeepSegments', value)} />
               </Box>
 
               <Box>
@@ -209,11 +262,11 @@ export default function CalculatorPage() {
                   {config.entryTickets.map((ticket) => (
                     <Stack key={ticket.id} direction="row" spacing={2} sx={{ alignItems: 'center' }}>
                       <FormControlLabel
-                        control={<Checkbox checked={Boolean(selectedTickets[ticket.id])} onChange={(e) => setSelectedTickets((p) => ({ ...p, [ticket.id]: e.target.checked }))} />}
+                        control={<Checkbox checked={Boolean(selectedTickets[ticket.id])} onChange={(e) => updateForm('selectedTickets', { ...selectedTickets, [ticket.id]: e.target.checked })} />}
                         label={`${ticket.name} (PKR ${ticket.price})`}
                       />
                       {selectedTickets[ticket.id] && (
-                        <TextField size="small" label="Qty" type="number" slotProps={{ htmlInput: { min: 1 } }} value={ticketQty[ticket.id] ?? pax} onChange={(e) => setTicketQty((p) => ({ ...p, [ticket.id]: Number(e.target.value) || 1 }))} sx={{ width: 100 }} />
+                        <TextField size="small" label="Qty" type="number" slotProps={{ htmlInput: { min: 1 } }} value={ticketQty[ticket.id] ?? pax} onChange={(e) => updateForm('ticketQty', { ...ticketQty, [ticket.id]: Number(e.target.value) || 1 })} sx={{ width: 100 }} />
                       )}
                     </Stack>
                   ))}
@@ -222,15 +275,15 @@ export default function CalculatorPage() {
 
               <Grid container spacing={2}>
                 <Grid size={{ xs: 6, sm: 3 }}>
-                  <TextField fullWidth label="Adults" type="number" slotProps={{ htmlInput: { min: 1 } }} value={adults} onChange={(e) => setAdults(Number(e.target.value) || 1)} />
+                  <TextField fullWidth label="Adults" type="number" slotProps={{ htmlInput: { min: 1 } }} value={adults} onChange={(e) => updateForm('adults', Number(e.target.value) || 1)} />
                 </Grid>
                 <Grid size={{ xs: 6, sm: 3 }}>
-                  <TextField fullWidth label="Children" type="number" slotProps={{ htmlInput: { min: 0 } }} value={children} onChange={(e) => setChildren(Number(e.target.value) || 0)} />
+                  <TextField fullWidth label="Children" type="number" slotProps={{ htmlInput: { min: 0 } }} value={children} onChange={(e) => updateForm('children', Number(e.target.value) || 0)} />
                 </Grid>
                 <Grid size={{ xs: 12, sm: 6 }}>
                   <FormControl fullWidth>
                     <InputLabel>Quote mode</InputLabel>
-                    <Select label="Quote mode" value={quoteMode} onChange={(e) => setQuoteMode(e.target.value as QuoteMode)}>
+                    <Select label="Quote mode" value={quoteMode} onChange={(e) => updateForm('quoteMode', e.target.value as QuoteMode)}>
                       <MenuItem value="family">Family total</MenuItem>
                       <MenuItem value="perPerson">Per person</MenuItem>
                     </Select>
@@ -240,7 +293,7 @@ export default function CalculatorPage() {
 
               <Box>
                 <Typography gutterBottom>Margin: {marginPercent}%</Typography>
-                <Slider value={marginPercent} min={0} max={50} step={1} onChange={(_, v) => setMarginPercent(v as number)} valueLabelDisplay="auto" />
+                <Slider value={marginPercent} min={0} max={50} step={1} onChange={(_, v) => updateForm('marginPercent', v as number)} valueLabelDisplay="auto" />
               </Box>
 
               <Button variant="contained" size="large" startIcon={<CalculateIcon />} onClick={handleCalculate} disabled={calculating || !vehicleId}>

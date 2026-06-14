@@ -1,7 +1,13 @@
-import { getApp } from 'firebase/app';
+import { FirebaseError, getApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import type { AppConfig, ParsedRequirement } from '../pricing/types';
+import type { AppConfig, HotelNightInput, ParsedRequirement } from '../pricing/types';
 import { seedConfig } from '../../data/seedConfig';
+
+export interface ParseResult {
+  result: ParsedRequirement;
+  source: 'ai' | 'local';
+  error?: string;
+}
 
 function findVehicleId(config: AppConfig, text: string): string | undefined {
   const lower = text.toLowerCase();
@@ -12,6 +18,34 @@ function findVehicleId(config: AppConfig, text: string): string | undefined {
   )?.id;
 }
 
+function pickCategoryId(text: string): string {
+  const lower = text.toLowerCase();
+  if (lower.includes('executive') || lower.includes('5 star') || lower.includes('5-star') || lower.includes('luxury')) {
+    return 'executive';
+  }
+  return 'deluxe';
+}
+
+function parseCallableError(err: unknown): string {
+  if (err instanceof FirebaseError) {
+    switch (err.code) {
+      case 'functions/unauthenticated':
+        return 'You must be signed in to use AI parsing.';
+      case 'functions/permission-denied':
+        return 'Your account is not active. Contact an admin.';
+      case 'functions/unavailable':
+      case 'functions/deadline-exceeded':
+        return 'AI service is temporarily unavailable.';
+      case 'functions/internal':
+        return err.message.replace(/^internal:\s*/i, '') || 'AI parsing failed on the server.';
+      default:
+        return err.message || 'AI parsing failed.';
+    }
+  }
+  if (err instanceof Error) return err.message;
+  return 'AI parsing failed.';
+}
+
 /** Rule-based fallback when Cloud Function / OpenAI unavailable */
 export function parseRequirementLocally(text: string, config: AppConfig): ParsedRequirement {
   const warnings: string[] = [];
@@ -20,8 +54,14 @@ export function parseRequirementLocally(text: string, config: AppConfig): Parsed
   const daysMatch = text.match(/(\d+)\s*days?/i);
   const tripDays = daysMatch ? Number(daysMatch[1]) : 7;
 
-  const paxMatch = text.match(/(?:family of|for)\s*(\d+)/i) ?? text.match(/(\d+)\s*(?:pax|persons?|people|adults?)/i);
+  const paxMatch =
+    text.match(/(\d+)\s*people/i) ??
+    text.match(/(?:family of|for)\s*(\d+)/i) ??
+    text.match(/(\d+)\s*(?:pax|persons?|adults?)/i);
   const adults = paxMatch ? Number(paxMatch[1]) : 4;
+
+  const roomsMatch = text.match(/(\d+)\s*rooms?(?:\s*per\s*night)?/i);
+  const rooms = roomsMatch ? Number(roomsMatch[1]) : 1;
 
   let departureCityId = config.cities.find((c) => c.kind === 'departure' || c.kind === 'both')?.id;
   for (const city of config.cities) {
@@ -40,33 +80,48 @@ export function parseRequirementLocally(text: string, config: AppConfig): Parsed
     }
   }
 
-  const vehicleId = findVehicleId(config, text) ?? config.vehicles[0]?.id;
-
-  let categoryId = 'deluxe';
-  if (lower.includes('executive')) categoryId = 'executive';
-
-  const hotelNights = waypointIds.slice(0, 3).map((destinationId) => ({
-    destinationId,
-    categoryId,
-    rooms: 1,
-    nights: Math.max(tripDays - 1, 1),
-  }));
-
-  if (waypointIds.length === 0) {
-    warnings.push('Could not detect destinations — add stops manually');
+  let vehicleId = findVehicleId(config, text);
+  if (!vehicleId) {
+    if (adults >= 15) {
+      vehicleId = config.vehicles.find((v) => v.id === 'coaster')?.id ?? config.vehicles.find((v) => v.type === 'van')?.id;
+    } else {
+      vehicleId = config.vehicles[0]?.id;
+    }
   }
 
-  const titleMatch = text.match(/^(.{10,60}?)(?:\n|tour|package)/im);
+  const categoryId = pickCategoryId(text);
+  const totalNights = Math.max(tripDays - 1, 1);
+  const stops = waypointIds.length > 0 ? waypointIds : ['skardu'];
+  const nightsPerStop = Math.max(Math.floor(totalNights / stops.length), 1);
+
+  const hotelNights: HotelNightInput[] = stops.map((destinationId) => {
+    const hotel = config.hotels.find((h) => h.cityId === destinationId && h.categoryId === categoryId)
+      ?? config.hotels.find((h) => h.cityId === destinationId);
+    return {
+      destinationId,
+      categoryId: hotel?.categoryId ?? categoryId,
+      ...(hotel ? { hotelId: hotel.id } : {}),
+      rooms,
+      nights: nightsPerStop,
+    };
+  });
+
+  if (waypointIds.length === 0) {
+    warnings.push('Could not detect destinations — review itinerary stops');
+  }
+
+  const cityNames = waypointIds
+    .map((id) => config.cities.find((c) => c.id === id)?.name)
+    .filter(Boolean);
   const packageTitle =
-    titleMatch?.[1]?.trim() ||
-    (waypointIds.length > 0
-      ? `${waypointIds.map((id) => config.cities.find((c) => c.id === id)?.name).filter(Boolean).join(' & ')} Tour`
-      : 'Northern Pakistan Tour');
+    cityNames.length > 0
+      ? `${cityNames.join(' & ')} Tour - ${categoryId === 'executive' ? 'Executive' : 'Deluxe'} Plan`
+      : 'Northern Pakistan Tour';
 
   return {
     packageTitle,
     departureCityId,
-    waypointIds,
+    waypointIds: waypointIds.length > 0 ? waypointIds : stops,
     vehicleId,
     tripDays,
     adults,
@@ -83,20 +138,27 @@ export function parseRequirementLocally(text: string, config: AppConfig): Parsed
 export async function parseClientRequirement(
   text: string,
   config: AppConfig = seedConfig,
-): Promise<ParsedRequirement> {
+): Promise<ParseResult> {
   try {
     const functions = getFunctions(getApp(), 'us-central1');
     const callable = httpsCallable<{ text: string }, ParsedRequirement>(
       functions,
       'parseClientRequirement',
     );
-    const result = await callable({ text });
+    const response = await callable({ text });
     return {
-      ...parseRequirementLocally(text, config),
-      ...result.data,
-      warnings: result.data.warnings ?? [],
+      result: {
+        ...response.data,
+        warnings: response.data.warnings ?? [],
+      },
+      source: 'ai',
     };
-  } catch {
-    return parseRequirementLocally(text, config);
+  } catch (err) {
+    const error = parseCallableError(err);
+    return {
+      result: parseRequirementLocally(text, config),
+      source: 'local',
+      error,
+    };
   }
 }

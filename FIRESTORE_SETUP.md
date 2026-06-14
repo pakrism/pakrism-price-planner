@@ -55,7 +55,9 @@ npx firebase-tools functions:secrets:set OPENAI_API_KEY --project pakrism-bookin
 firebase deploy --only functions:parseClientRequirement --project pakrism-bookings
 ```
 
-If the secret is missing or the function is not deployed, the calculator falls back to local keyword parsing and shows a warning.
+If the secret is missing or the function is not deployed, the calculator falls back to local keyword parsing and shows the actual error message.
+
+**Never put your OpenAI key in the frontend, `.env` files committed to git, or Netlify env vars.** If a key was ever pasted in chat or committed, revoke it at [OpenAI API keys](https://platform.openai.com/api-keys) and create a new one before running the command above.
 
 ## Verify
 

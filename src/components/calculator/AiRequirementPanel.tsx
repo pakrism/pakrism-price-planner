@@ -5,29 +5,38 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
-import type { AppConfig, ParsedRequirement } from '../../lib/pricing/types';
-import { parseClientRequirement } from '../../lib/services/aiParser';
+import type { AppConfig } from '../../lib/pricing/types';
+import { parseClientRequirement, type ParseResult } from '../../lib/services/aiParser';
 
 interface Props {
   config: AppConfig;
-  onParsed: (result: ParsedRequirement) => void;
+  onParsed: (parsed: ParseResult) => void | Promise<void>;
 }
 
 export default function AiRequirementPanel({ config, onParsed }: Props) {
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [warnings, setWarnings] = useState<string[]>([]);
 
   async function handleParse() {
     if (!text.trim()) return;
     setLoading(true);
     setError('');
+    setSuccess('');
     setWarnings([]);
     try {
-      const result = await parseClientRequirement(text, config);
-      setWarnings(result.warnings ?? []);
-      onParsed(result);
+      const parsed = await parseClientRequirement(text, config);
+      setWarnings(parsed.result.warnings ?? []);
+
+      if (parsed.source === 'ai') {
+        setSuccess('Parsed with AI — form updated and price calculated.');
+      } else {
+        setError(parsed.error ?? 'AI unavailable — filled with local rules instead.');
+      }
+
+      await onParsed(parsed);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Parse failed');
     } finally {
@@ -49,6 +58,7 @@ export default function AiRequirementPanel({ config, onParsed }: Props) {
       <Button variant="outlined" startIcon={<AutoFixHighIcon />} onClick={handleParse} disabled={loading || !text.trim()}>
         {loading ? 'Parsing…' : 'Parse with AI'}
       </Button>
+      {success && <Alert severity="success">{success}</Alert>}
       {error && <Alert severity="error">{error}</Alert>}
       {warnings.length > 0 && (
         <Alert severity="warning">{warnings.join(' · ')}</Alert>
