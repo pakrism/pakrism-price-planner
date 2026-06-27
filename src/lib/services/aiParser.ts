@@ -1,12 +1,24 @@
-import { FirebaseError, getApp } from 'firebase/app';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { FirebaseError } from 'firebase/app';
+import { httpsCallableFromURL } from 'firebase/functions';
 import type { AppConfig, HotelNightInput, ParsedRequirement } from '../pricing/types';
 import { seedConfig } from '../../data/seedConfig';
+import { functions } from '../firebase';
 
 export interface ParseResult {
   result: ParsedRequirement;
   source: 'ai' | 'local';
   error?: string;
+}
+
+const NETWORK_ERROR_HINT =
+  'Cannot reach AI server (network/DNS). Try another network, disable ad blockers, or set DNS to 8.8.8.8.';
+
+function getCallableUrls(): string[] {
+  return [
+    import.meta.env.VITE_PARSE_REQUIREMENT_URL,
+    'https://parseclientrequirement-kuz6vb23eq-uc.a.run.app',
+    'https://us-central1-pakrism-bookings.cloudfunctions.net/parseClientRequirement',
+  ].filter((url): url is string => Boolean(url));
 }
 
 function findVehicleId(config: AppConfig, text: string): string | undefined {
@@ -26,7 +38,23 @@ function pickCategoryId(text: string): string {
   return 'deluxe';
 }
 
+function isNetworkError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  return (
+    msg.includes('failed to fetch') ||
+    msg.includes('networkerror') ||
+    msg.includes('network request failed') ||
+    msg.includes('load failed') ||
+    msg.includes('err_name_not_resolved')
+  );
+}
+
 function parseCallableError(err: unknown): string {
+  if (isNetworkError(err)) {
+    return NETWORK_ERROR_HINT;
+  }
+
   if (err instanceof FirebaseError) {
     switch (err.code) {
       case 'functions/unauthenticated':
@@ -36,13 +64,25 @@ function parseCallableError(err: unknown): string {
       case 'functions/unavailable':
       case 'functions/deadline-exceeded':
         return 'AI service is temporarily unavailable.';
-      case 'functions/internal':
-        return err.message.replace(/^internal:\s*/i, '') || 'AI parsing failed on the server.';
+      case 'functions/internal': {
+        const detail = err.message.replace(/^internal:\s*/i, '').trim();
+        if (!detail || detail.toLowerCase() === 'internal') {
+          return NETWORK_ERROR_HINT;
+        }
+        return detail;
+      }
       default:
         return err.message || 'AI parsing failed.';
     }
   }
-  if (err instanceof Error) return err.message;
+
+  if (err instanceof Error) {
+    if (err.message.toLowerCase() === 'internal') {
+      return NETWORK_ERROR_HINT;
+    }
+    return err.message;
+  }
+
   return 'AI parsing failed.';
 }
 
@@ -135,30 +175,39 @@ export function parseRequirementLocally(text: string, config: AppConfig): Parsed
   };
 }
 
+async function callParseFunction(text: string, url: string): Promise<ParsedRequirement> {
+  const callable = httpsCallableFromURL<{ text: string }, ParsedRequirement>(functions, url);
+  const response = await callable({ text });
+  return {
+    ...response.data,
+    warnings: response.data.warnings ?? [],
+  };
+}
+
 export async function parseClientRequirement(
   text: string,
   config: AppConfig = seedConfig,
 ): Promise<ParseResult> {
-  try {
-    const functions = getFunctions(getApp(), 'us-central1');
-    const callable = httpsCallable<{ text: string }, ParsedRequirement>(
-      functions,
-      'parseClientRequirement',
-    );
-    const response = await callable({ text });
-    return {
-      result: {
-        ...response.data,
-        warnings: response.data.warnings ?? [],
-      },
-      source: 'ai',
-    };
-  } catch (err) {
-    const error = parseCallableError(err);
-    return {
-      result: parseRequirementLocally(text, config),
-      source: 'local',
-      error,
-    };
+  const urls = getCallableUrls();
+  const errors: string[] = [];
+
+  for (const url of urls) {
+    try {
+      const result = await callParseFunction(text, url);
+      return { result, source: 'ai' };
+    } catch (err) {
+      errors.push(parseCallableError(err));
+    }
   }
+
+  const uniqueErrors = [...new Set(errors)];
+  const error = uniqueErrors.length === 1
+    ? uniqueErrors[0]
+    : `${NETWORK_ERROR_HINT} (${uniqueErrors.join('; ')})`;
+
+  return {
+    result: parseRequirementLocally(text, config),
+    source: 'local',
+    error,
+  };
 }
