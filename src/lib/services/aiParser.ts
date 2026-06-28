@@ -2,7 +2,7 @@ import { FirebaseError } from 'firebase/app';
 import { httpsCallableFromURL } from 'firebase/functions';
 import type { AppConfig, HotelNightInput, ParsedRequirement } from '../pricing/types';
 import { seedConfig } from '../../data/seedConfig';
-import { functions } from '../firebase';
+import { auth, functions } from '../firebase';
 
 export interface ParseResult {
   result: ParsedRequirement;
@@ -11,7 +11,7 @@ export interface ParseResult {
 }
 
 const NETWORK_ERROR_HINT =
-  'Cannot reach AI server (network/DNS). Try another network, disable ad blockers, or set DNS to 8.8.8.8.';
+  'Cannot reach AI server (network/CORS). Try again after redeploy, or use another network.';
 
 function getCallableUrls(): string[] {
   return [
@@ -184,13 +184,61 @@ async function callParseFunction(text: string, url: string): Promise<ParsedRequi
   };
 }
 
+async function callParseViaNetlifyProxy(text: string): Promise<ParsedRequirement | null> {
+  const user = auth.currentUser;
+  if (!user) {
+    throw new FirebaseError('functions/unauthenticated', 'You must be signed in to use AI parsing.');
+  }
+
+  const token = await user.getIdToken();
+  let res: Response;
+  try {
+    res = await fetch('/.netlify/functions/parse-requirement', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ text }),
+    });
+  } catch {
+    return null;
+  }
+
+  if (res.status === 404) {
+    return null;
+  }
+
+  const payload = await res.json();
+  if (!res.ok) {
+    const message = payload?.error?.message || payload?.message || 'AI parsing failed.';
+    const status = String(payload?.error?.status || 'internal').replace(/^functions\//, '');
+    throw new FirebaseError(`functions/${status}`, message);
+  }
+
+  const result = payload.result as ParsedRequirement;
+  return {
+    ...result,
+    warnings: result.warnings ?? [],
+  };
+}
+
 export async function parseClientRequirement(
   text: string,
   config: AppConfig = seedConfig,
 ): Promise<ParseResult> {
-  const urls = getCallableUrls();
   const errors: string[] = [];
 
+  try {
+    const proxyResult = await callParseViaNetlifyProxy(text);
+    if (proxyResult) {
+      return { result: proxyResult, source: 'ai' };
+    }
+  } catch (err) {
+    errors.push(parseCallableError(err));
+  }
+
+  const urls = getCallableUrls();
   for (const url of urls) {
     try {
       const result = await callParseFunction(text, url);

@@ -2,8 +2,12 @@
   command = "npm run build"
   publish = "dist"
 
+[functions]
+  directory = "netlify/functions"
+
 [build.environment]
   VITE_PARSE_REQUIREMENT_URL = "https://parseclientrequirement-kuz6vb23eq-uc.a.run.app"
+  PARSE_REQUIREMENT_BACKEND_URL = "https://parseclientrequirement-kuz6vb23eq-uc.a.run.app"
 
 [[redirects]]
   from = "/*"
