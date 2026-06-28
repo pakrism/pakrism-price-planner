@@ -82,9 +82,22 @@ VITE_PARSE_REQUIREMENT_URL=https://parseclientrequirement-kuz6vb23eq-uc.a.run.ap
 
 Update this value if the Cloud Run URL changes after a redeploy.
 
+## Google Maps road distances
+
+Live km/fuel uses a Netlify function proxy (`/.netlify/functions/google-directions`). The browser never sees the API key.
+
+1. Enable **Directions API** in Google Cloud Console for your project
+2. Create an API key (restrict to Directions API)
+3. In Netlify → Site settings → Environment variables, add:
+   - `GOOGLE_MAPS_API_KEY` = your key (runtime variable, **not** `VITE_*`)
+4. Redeploy https://pr-plan.netlify.app
+
+Without the key, the calculator uses the admin distance matrix fallback.
+
 ## Verify
 
 1. Hard refresh https://pr-plan.netlify.app
 2. Log in — console should not show config permission errors
 3. Yellow “Using built-in defaults” banner should be gone
-4. Paste a client message → **Parse with AI** should populate calculator fields (when signed in and function is deployed)
+4. Add itinerary stops — distance and fuel preview should update automatically
+5. Price breakdown should auto-calculate when the route resolves

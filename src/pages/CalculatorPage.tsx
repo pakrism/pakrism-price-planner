@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -17,13 +17,15 @@ import Typography from '@mui/material/Typography';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import AiRequirementPanel from '../components/calculator/AiRequirementPanel';
 import CustomerQuoteCard from '../components/calculator/CustomerQuoteCard';
+import DistancePreviewStrip from '../components/calculator/DistancePreviewStrip';
 import HotelNightsForm from '../components/calculator/HotelNightsForm';
 import ItineraryBuilder from '../components/calculator/ItineraryBuilder';
 import JeepSegmentsForm from '../components/calculator/JeepSegmentsForm';
 import PriceBreakdownCard from '../components/calculator/PriceBreakdownCard';
 import { useConfig } from '../context/ConfigProvider';
+import { useTripDistance } from '../lib/hooks/useTripDistance';
 import { calculatePackagePrice } from '../lib/pricing/calculatePackagePrice';
-import { getDepartureCities, getStopsForVehicle } from '../lib/pricing/helpers';
+import { getDepartureCities, getStopsForVehicle, syncHotelNightsFromStops } from '../lib/pricing/helpers';
 import type {
   CalculationInput,
   HotelNightInput,
@@ -36,6 +38,8 @@ import type {
 import { buildQuoteFromCalculation } from '../lib/quote/generateCustomerQuote';
 import type { ParseResult } from '../lib/services/aiParser';
 import { resolveTripDistance } from '../lib/services/distanceService';
+
+const aiParsingEnabled = import.meta.env.VITE_ENABLE_AI_PARSING !== 'false';
 
 interface CalculatorFormState {
   packageTitle: string;
@@ -106,6 +110,7 @@ export default function CalculatorPage() {
   const [customerQuote, setCustomerQuote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [calculating, setCalculating] = useState(false);
+  const lastAutoCalcKey = useRef('');
 
   const {
     packageTitle,
@@ -131,11 +136,27 @@ export default function CalculatorPage() {
     [config, selectedVehicle],
   );
 
+  const {
+    distance: liveDistance,
+    fuelPreview,
+    outboundLegs,
+    loading: distanceLoading,
+    error: distanceError,
+  } = useTripDistance(departureCityId, waypointIds, config, vehicleId);
+
   function updateForm<K extends keyof CalculatorFormState>(key: K, value: CalculatorFormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  async function runCalculation(state: CalculatorFormState) {
+  function handleWaypointChange(ids: string[]) {
+    setForm((prev) => ({
+      ...prev,
+      waypointIds: ids,
+      hotelNights: syncHotelNightsFromStops(ids, prev.tripDays, prev.hotelNights, config),
+    }));
+  }
+
+  const runCalculation = useCallback(async (state: CalculatorFormState) => {
     setCalculating(true);
     setError(null);
     setCustomerQuote(null);
@@ -179,7 +200,7 @@ export default function CalculatorPage() {
     } finally {
       setCalculating(false);
     }
-  }
+  }, [config]);
 
   async function handleCalculate() {
     await runCalculation(form);
@@ -192,6 +213,17 @@ export default function CalculatorPage() {
       await runCalculation(next);
     }
   }
+
+  const autoCalcKey = liveDistance && !liveDistance.missingLegs?.length
+    ? `${liveDistance.totalKm}:${liveDistance.source}:${departureCityId}:${waypointIds.join(',')}:${vehicleId}`
+    : '';
+
+  useEffect(() => {
+    if (!autoCalcKey || distanceLoading || !vehicleId || waypointIds.length === 0) return;
+    if (lastAutoCalcKey.current === autoCalcKey) return;
+    lastAutoCalcKey.current = autoCalcKey;
+    void runCalculation(form);
+  }, [autoCalcKey, distanceLoading, form, runCalculation, vehicleId, waypointIds.length]);
 
   return (
     <Stack spacing={3}>
@@ -206,9 +238,11 @@ export default function CalculatorPage() {
         </Alert>
       )}
 
-      <Paper sx={{ p: 3 }}>
-        <AiRequirementPanel config={config} onParsed={handleAiParsed} />
-      </Paper>
+      {aiParsingEnabled && (
+        <Paper sx={{ p: 3 }}>
+          <AiRequirementPanel config={config} onParsed={handleAiParsed} />
+        </Paper>
+      )}
 
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, lg: 7 }}>
@@ -227,8 +261,21 @@ export default function CalculatorPage() {
 
               <Box>
                 <Typography variant="subtitle1" gutterBottom>Itinerary stops</Typography>
-                <ItineraryBuilder cities={stopCities.filter((c) => c.id !== departureCityId)} waypointIds={waypointIds} onChange={(ids) => updateForm('waypointIds', ids)} />
+                <ItineraryBuilder
+                  cities={stopCities.filter((c) => c.id !== departureCityId)}
+                  waypointIds={waypointIds}
+                  onChange={handleWaypointChange}
+                  outboundLegs={outboundLegs}
+                />
               </Box>
+
+              <DistancePreviewStrip
+                distance={liveDistance}
+                fuelPreview={fuelPreview}
+                loading={distanceLoading}
+                error={distanceError}
+                fuelPriceSource={config.fuel.manualPricePerLiter}
+              />
 
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12, sm: 6 }}>

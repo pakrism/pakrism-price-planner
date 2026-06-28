@@ -18,6 +18,22 @@ Uses the same Firebase project as `pr-bookings-manager`. Sign in with your exist
 - **Admin** — vehicles, cities, distance matrix, hotels, tickets, provisions, fuel
 - **Fuel** — `distance ÷ km/L × ceil(fuel price)` with manual or fetched prices
 - **Distance** — Google Maps Directions when API key is set; manual matrix fallback
+- **Live preview** — distance and fuel update as you add itinerary stops
+
+## Google Maps distance (optional)
+
+For automatic road distances instead of maintaining the manual matrix:
+
+1. Enable **Directions API** in [Google Cloud Console](https://console.cloud.google.com/)
+2. Create an API key and restrict it to Directions API
+3. In Netlify → Site settings → Environment variables, add `GOOGLE_MAPS_API_KEY` (server-only, not `VITE_*`)
+4. Redeploy the site
+
+Without the key, the calculator falls back to the admin distance matrix.
+
+## AI parsing (disabled by default)
+
+Set `VITE_ENABLE_AI_PARSING=true` in Netlify to re-enable the Parse with AI panel.
 
 ## Scripts
 

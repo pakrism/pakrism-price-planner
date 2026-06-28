@@ -227,6 +227,10 @@ export async function parseClientRequirement(
   text: string,
   config: AppConfig = seedConfig,
 ): Promise<ParseResult> {
+  if (import.meta.env.VITE_ENABLE_AI_PARSING === 'false') {
+    return { result: parseRequirementLocally(text, config), source: 'local' };
+  }
+
   const errors: string[] = [];
 
   try {

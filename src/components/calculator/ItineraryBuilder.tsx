@@ -12,13 +12,25 @@ import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import DeleteIcon from '@mui/icons-material/Delete';
 import type { City } from '../../lib/pricing/types';
 
+interface LegDistance {
+  from: string;
+  to: string;
+  km: number;
+}
+
 interface Props {
   cities: City[];
   waypointIds: string[];
   onChange: (ids: string[]) => void;
+  outboundLegs?: LegDistance[];
 }
 
-export default function ItineraryBuilder({ cities, waypointIds, onChange }: Props) {
+export default function ItineraryBuilder({
+  cities,
+  waypointIds,
+  onChange,
+  outboundLegs = [],
+}: Props) {
   function addStop(cityId: string) {
     if (!cityId || waypointIds.includes(cityId)) return;
     onChange([...waypointIds, cityId]);
@@ -34,6 +46,11 @@ export default function ItineraryBuilder({ cities, waypointIds, onChange }: Prop
     if (target < 0 || target >= next.length) return;
     [next[index], next[target]] = [next[target], next[index]];
     onChange(next);
+  }
+
+  function legKmForStop(index: number): number | null {
+    const leg = outboundLegs[index];
+    return leg?.km ?? null;
   }
 
   return (
@@ -61,6 +78,9 @@ export default function ItineraryBuilder({ cities, waypointIds, onChange }: Prop
         <Stack spacing={1}>
           {waypointIds.map((id, index) => {
             const city = cities.find((c) => c.id === id);
+            const legKm = legKmForStop(index);
+            const leg = outboundLegs[index];
+
             return (
               <Box
                 key={`${id}-${index}`}
@@ -76,12 +96,19 @@ export default function ItineraryBuilder({ cities, waypointIds, onChange }: Prop
                 }}
               >
                 <Chip size="small" label={index + 1} />
-                <Typography sx={{ flex: 1 }}>
-                  {city?.name ?? id}
-                  {city?.vehicleAccess.length === 1 && city.vehicleAccess[0] === 'jeep' && (
-                    <Chip size="small" label="jeep only" color="warning" sx={{ ml: 1 }} />
+                <Box sx={{ flex: 1 }}>
+                  <Typography>
+                    {city?.name ?? id}
+                    {city?.vehicleAccess.length === 1 && city.vehicleAccess[0] === 'jeep' && (
+                      <Chip size="small" label="jeep only" color="warning" sx={{ ml: 1 }} />
+                    )}
+                  </Typography>
+                  {legKm != null && legKm > 0 && leg && (
+                    <Typography variant="caption" color="text.secondary">
+                      {legKm.toLocaleString(undefined, { maximumFractionDigits: 0 })} km from {leg.from}
+                    </Typography>
                   )}
-                </Typography>
+                </Box>
                 <IconButton size="small" onClick={() => moveStop(index, -1)} disabled={index === 0}>
                   <ArrowUpwardIcon fontSize="small" />
                 </IconButton>

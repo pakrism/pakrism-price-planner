@@ -6,8 +6,10 @@
   directory = "netlify/functions"
 
 [build.environment]
+  VITE_ENABLE_AI_PARSING = "false"
   VITE_PARSE_REQUIREMENT_URL = "https://parseclientrequirement-kuz6vb23eq-uc.a.run.app"
   PARSE_REQUIREMENT_BACKEND_URL = "https://parseclientrequirement-kuz6vb23eq-uc.a.run.app"
+  # Set GOOGLE_MAPS_API_KEY in Netlify dashboard (runtime, server-only — not VITE_*)
 
 [[redirects]]
   from = "/*"
